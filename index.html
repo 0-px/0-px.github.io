@@ -1,8 +1,157 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<meta charset="utf-8">
-<head><link rel="stylesheet" href="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-M/font-awesome/4.7.0/css/font-awesome.min.css"></head>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>迷宫生成器（Canvas混合圆角版）</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #e0e7ef 0%, #f8fafc 100%);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      font-family: 'Segoe UI', 'PingFang SC', 'Arial', sans-serif;
+    }
+    h2 { margin-top: 32px; color: #222b45; }
+    #mazeCanvas { background: #fff; box-shadow: 0 4px 32px #3c46641a; border-radius: 0; margin: 24px 0 14px 0;}
+    button {
+      font-size: 1em;
+      padding: 8px 28px;
+      border-radius: 18px;
+      border: none;
+      background: linear-gradient(90deg,#3c8ce7,#00eaff);
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+      box-shadow: 0 2px 8px 0 #00eaff33;
+      transition: background 0.15s, transform 0.12s;
+    }
+    button:hover {
+      background: linear-gradient(90deg,#36e09a,#3c8ce7);
+      transform: translateY(-2px) scale(1.04);
+    }
+    p { color: #444b58; margin-bottom: 18px; }
+  </style>
+</head>
 <body>
-  XJX AK IOI
+  <h2>迷宫生成器（Canvas混合圆角版）</h2>
+  <canvas id="mazeCanvas" width="656" height="496"></canvas><br>
+  <button id="regen">生成迷宫</button>
+  <p>用 <b>方向键</b> 控制绿色小球从左上角走到右下角红色方块</p>
+  <script>
+    // 迷宫尺寸
+    const ROWS = 31, COLS = 41;
+    const CELL = 16, WALL = 2; // 单元格边长和墙厚
+    const canvas = document.getElementById('mazeCanvas');
+    const ctx = canvas.getContext('2d');
+    let maze, player, exit;
+
+    // 迷宫生成（深度优先回溯，四面墙）
+    function generateMaze(rows, cols) {
+      // 每个格子有上下左右墙
+      let cells = Array.from({length: rows}, ()=>Array.from({length:cols},()=>({
+        top:true, right:true, bottom:true, left:true, visited:false
+      })));
+      function carve(x, y) {
+        cells[y][x].visited = true;
+        let dirs = [[0,-1],[1,0],[0,1],[-1,0]].sort(()=>Math.random()-0.5);
+        for (let [dx,dy] of dirs) {
+          let nx = x+dx, ny = y+dy;
+          if (nx>=0 && nx<cols && ny>=0 && ny<rows && !cells[ny][nx].visited) {
+            if (dx===1) { cells[y][x].right = false; cells[ny][nx].left = false; }
+            if (dx===-1) { cells[y][x].left = false; cells[ny][nx].right = false; }
+            if (dy===1) { cells[y][x].bottom = false; cells[ny][nx].top = false; }
+            if (dy===-1) { cells[y][x].top = false; cells[ny][nx].bottom = false; }
+            carve(nx, ny);
+          }
+        }
+      }
+      carve(0,0);
+      return cells;
+    }
+
+    function drawMaze() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.save();
+      ctx.translate(WALL, WALL);
+      ctx.strokeStyle = "#3a3d4d";
+      ctx.lineWidth = WALL;
+      // 绘制迷宫墙体
+      for(let y=0; y<ROWS; y++) {
+        for(let x=0; x<COLS; x++) {
+          let c = maze[y][x];
+          let sx = x*CELL, sy = y*CELL;
+          ctx.beginPath();
+          if(c.top)    { ctx.moveTo(sx,sy); ctx.lineTo(sx+CELL,sy); }
+          if(c.right)  { ctx.moveTo(sx+CELL,sy); ctx.lineTo(sx+CELL,sy+CELL); }
+          if(c.bottom) { ctx.moveTo(sx,sy+CELL); ctx.lineTo(sx+CELL,sy+CELL); }
+          if(c.left)   { ctx.moveTo(sx,sy); ctx.lineTo(sx,sy+CELL); }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // 画出口（红色方块）
+      ctx.save();
+      ctx.fillStyle = "red";
+      ctx.shadowColor = "#f44336";
+      ctx.shadowBlur = 0;
+      ctx.fillRect(
+        exit.x*CELL + WALL + 2,
+        exit.y*CELL + WALL + 2,
+        CELL-4,
+        CELL-4
+      );
+      ctx.restore();
+
+      // 画玩家（绿色圆球）
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(
+        player.x*CELL + WALL + CELL/2,
+        player.y*CELL + WALL + CELL/2,
+        (CELL-4)/2, 0, 2*Math.PI
+      );
+      ctx.fillStyle = "#36e09a";
+      ctx.shadowColor = "#36e09a";
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function canMove(nx,ny) {
+      if(nx<0 || nx>=COLS || ny<0 || ny>=ROWS) return false;
+      if(nx>player.x && maze[player.y][player.x].right===false) return true;
+      if(nx<player.x && maze[player.y][player.x].left===false) return true;
+      if(ny>player.y && maze[player.y][player.x].bottom===false) return true;
+      if(ny<player.y && maze[player.y][player.x].top===false) return true;
+      return false;
+    }
+
+    document.addEventListener('keydown', e=>{
+      let nx = player.x, ny = player.y;
+      if(e.key==='ArrowUp') ny--;
+      if(e.key==='ArrowDown') ny++;
+      if(e.key==='ArrowLeft') nx--;
+      if(e.key==='ArrowRight') nx++;
+      if(canMove(nx,ny)) {
+        player.x = nx; player.y = ny;
+        drawMaze();
+        if(player.x === exit.x && player.y === exit.y) {
+          setTimeout(()=>alert('🎉 恭喜通关！'), 80);
+        }
+      }
+    });
+
+    function resetGame() {
+      maze = generateMaze(ROWS, COLS);
+      player = {x: 0, y: 0};
+      exit = {x: COLS-1, y: ROWS-1};
+      drawMaze();
+    }
+
+    document.getElementById('regen').onclick = resetGame;
+    resetGame();
+  </script>
 </body>
-<html>
+</html>
